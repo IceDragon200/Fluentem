@@ -1,0 +1,252 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        mavenLocal()
+
+        maven {
+            name = "forge"
+            url = "http://files.minecraftforge.net/maven"
+        }
+
+        maven {
+            name = "sonatype"
+            url = "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+    }
+
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:1.2-SNAPSHOT'
+    }
+}
+
+apply plugin: 'forge'
+apply plugin: 'checkstyle'
+
+checkstyle {
+    toolVersion = "6.11.2"
+    configFile = new File(rootDir, "checkstyle/checkstyle.xml")
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_7
+targetCompatibility = JavaVersion.VERSION_1_7
+
+version = "${minecraft_version}-${fluentem_version}"
+group = "io.polyfox"
+archivesBaseName = "fluentem"
+
+// 3rd party APIs
+ext.mfrApi = "sub/Growthcraft/api/powercrystals/minefactoryreloaded/api"
+ext.mfrApiExclusionPattern = "**/powercrystals/minefactoryreloaded/api/**"
+
+ext.thaumcraftApi = "sub/Growthcraft/api/thaumcraft/api"
+ext.thaumcraftApiExclusionPattern = "**/thaumcraft/api/**"
+
+ext.forestryApiRoot = "sub/Growthcraft/api/ForestryAPI"
+ext.forestryApi = "sub/Growthcraft/api/ForestryAPI/forestry/api"
+ext.forestryApiExclusionPattern = "**/forestry/api/**"
+
+minecraft {
+    version = minecraft_forge_version
+    runDir = "run"
+
+    replace '@VERSION@', project.version
+    replace '@MC_VERSION@', version
+}
+
+// Because of some oddities in the AE api/dev I'll need these...
+repositories {
+    mavenCentral()
+    mavenLocal()
+
+    maven {
+        name "AppleCore"
+        url "http://www.ryanliptak.com/maven/"
+    }
+
+    maven {
+        name "ChickenBones"
+        url "http://chickenbones.net/maven/"
+    }
+
+    maven {
+        name "Mobius"
+        url "http://mobiusstrip.eu/maven"
+    }
+
+    maven {
+        name "FireBall API Depot"
+        url "http://dl.tsr.me/artifactory/libs-release-local"
+    }
+
+    maven {
+        name "Player"
+        url "http://maven.ic2.player.to/"
+    }
+
+    maven {
+        name "Tterrag"
+        url "http://maven.tterrag.com/"
+    }
+
+    maven  {
+        name "RX14 Proxy"
+        url "http://mvn.rx14.co.uk/repo/"
+    }
+
+    maven {
+        name "OpenComputers Repo"
+        url "http://maven.cil.li/"
+    }
+
+    ivy {
+        name "BuildCraft"
+        artifactPattern "http://www.mod-buildcraft.com/releases/BuildCraft/[revision]/[module]-[revision]-[classifier].[ext]"
+    }
+}
+
+dependencies {
+    compile project(":sub/Growthcraft")
+    //compile "mcp.mobius.waila:Waila:1.5.10_1.7.10:api"
+
+    // Testing
+    testCompile "junit:junit:4.11"
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main'
+        }
+        resources {
+            srcDir 'src/resources'
+        }
+    }
+    api {
+        java {
+            srcDir 'src/main/id2h/yatm/api'
+            srcDir 'api'
+            srcDir project.forestryApi
+            srcDir project.thaumcraftApi
+            srcDir project.mfrApi
+        }
+    }
+}
+
+processResources {
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+
+        // replace version and mcversion
+        // ${version}   and    ${mcversion}    are the exact strings being replaced
+        expand 'version':project.version, 'mcversion':project.minecraft.version
+    }
+
+    // copy everything else, that's not the mcmod.info
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs += ['-Xlint:all', '-Xlint:rawtypes', '-Xlint:deprecation', '-Xlint:unchecked']
+    options.deprecation = true
+    options.encoding = 'utf8'
+}
+
+runClient {
+    if( project.hasProperty("mcUsername") && project.hasProperty("mcPassword") ) {
+        args "--username=${project.mcUsername}"
+        args "--password=${project.mcPassword}"
+    }
+
+}
+
+debugClient {
+    if( project.hasProperty("mcUsername") && project.hasProperty("mcPassword") ) {
+        args "--username=${project.mcUsername}"
+        args "--password=${project.mcPassword}"
+    }
+}
+
+// --------------------
+// extra jar section
+// -------------------
+
+// add a source jar
+task sourceJar(type: Jar) {
+    from sourceSets.main.allSource
+    from(sourceSets.api.allSource) {
+        exclude project.forestryApiExclusionPattern
+        exclude project.thaumcraftApiExclusionPattern
+        exclude project.mfrApiExclusionPattern
+    }
+    classifier = 'sources'
+}
+
+javadoc {
+    // add api classes to javadoc
+    source += sourceSets.api.allSource
+    // exclude 3rd party apis from the javadoc
+    exclude project.thaumcraftApiExclusionPattern
+    exclude project.forestryApiExclusionPattern
+    exclude project.mfrApiExclusionPattern
+
+    failOnError = false
+}
+
+// add a javadoc jar
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+}
+
+// because the normal output has been made to be obfuscated
+task deobfJar(type: Jar) {
+    classifier = 'dev'
+
+    from sourceSets.main.output
+
+    from(sourceSets.api.output) {
+        exclude project.forestryApiExclusionPattern
+        exclude project.thaumcraftApiExclusionPattern
+        exclude project.mfrApiExclusionPattern
+    }
+    // Only include the thaumcraft LICENSE
+    into("thaumcraft/api") {
+        from project.thaumcraftApi + "/LICENSE"
+    }
+    into("forestry/api") {
+        from project.forestryApiRoot + "/LICENSE.txt"
+    }
+}
+
+task apiJar(type: Jar) {
+    from(sourceSets.api.output) {
+        exclude project.forestryApiExclusionPattern
+        exclude project.thaumcraftApiExclusionPattern
+        exclude project.mfrApiExclusionPattern
+    }
+    classifier = "api"
+}
+
+jar {
+    classifier = 'release'
+
+    // add api classes to main package
+    from(sourceSets.api.output) {
+        exclude project.forestryApiExclusionPattern
+        exclude project.thaumcraftApiExclusionPattern
+        exclude project.mfrApiExclusionPattern
+    }
+
+    // Only include the thaumcraft LICENSE
+    into("thaumcraft/api") {
+        from project.thaumcraftApi + "/LICENSE"
+    }
+    into("forestry/api") {
+        from project.forestryApiRoot + "/LICENSE.txt"
+    }
+}
+
+// make sure all of these happen when we run build
+build.dependsOn sourceJar, javadocJar, deobfJar, apiJar
