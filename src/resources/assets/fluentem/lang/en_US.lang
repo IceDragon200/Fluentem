@@ -1,5 +1,6 @@
-tile.fluentum.pipe_base.name=Fluid Tube
-tile.fluentum.pipe_vacuum.name=Vacuum Tube
-tile.fluentum.pipe_valve.name=Valve Tube
+itemGroup.creative_tab_fluentem=Fluentem
+tile.fluentem.pipe_base.name=Fluid Tube
+tile.fluentem.pipe_vacuum.name=Vacuum Tube
+tile.fluentem.pipe_valve.name=Valve Tube
 
-item.fluentum.pipe_base.format.name=%s (%s)
+item.fluentem.pipe_base.format.name=%s (%s)

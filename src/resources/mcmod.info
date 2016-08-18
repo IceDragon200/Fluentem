@@ -1,0 +1,20 @@
+[
+    {
+        "modid": "fluentem",
+        "name": "Fluentem",
+        "description": "A fluid pipe mod for Growthcraft",
+        "version": "$version",
+        "mcversion": "$mcversion",
+        "url": "",
+        "updateUrl": "",
+        "authorList": ["IceDragon200"],
+        "credits": "",
+        "logoFile": "/fluentem_logo.png",
+        "screenshots": [],
+        "parent": "",
+        "requiredMods": [ "Forge", "Growthcraft", "Growthcraft|Cellar" ],
+        "dependencies": [ "Growthcraft", "Growthcraft|Cellar" ],
+        "dependants": [],
+        "useDependencyInformation": "true"
+    }
+]

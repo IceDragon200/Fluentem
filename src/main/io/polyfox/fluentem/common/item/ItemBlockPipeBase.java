@@ -41,7 +41,7 @@ public class ItemBlockPipeBase extends ItemBlock
 	@Override
 	public String getItemStackDisplayName(ItemStack stack)
 	{
-		return GrcI18n.translate("item.grcpipes.pipe_base.format.name",
+		return GrcI18n.translate("item.fluentem.pipe_base.format.name",
 			super.getItemStackDisplayName(stack),
 			GrcColorPreset.toColour(stack.getItemDamage()).toString());
 	}

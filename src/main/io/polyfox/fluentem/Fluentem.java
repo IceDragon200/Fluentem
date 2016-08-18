@@ -83,7 +83,7 @@ public class Fluentem
 		if (config.enableThaumcraftIntegration) modules.add(new io.polyfox.fluentem.integration.ThaumcraftModule());
 		if (config.debugEnabled) modules.setLogger(logger);
 		modules.freeze();
-		creativeTab = new FluentemCreativeTabs("creative_tab_grcpipes");
+		creativeTab = new FluentemCreativeTabs("creative_tab_fluentem");
 		modules.preInit();
 		modules.register();
 	}
