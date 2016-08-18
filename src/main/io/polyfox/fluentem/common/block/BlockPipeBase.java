@@ -26,6 +26,7 @@ package io.polyfox.fluentem.common.block;
 import java.util.List;
 import java.util.Random;
 
+import growthcraft.api.core.util.BoundUtils;
 import growthcraft.api.core.util.GrcColorPreset;
 import growthcraft.core.common.block.GrcBlockBase;
 import growthcraft.core.common.block.IDroppableBlock;
@@ -58,6 +59,9 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 public class BlockPipeBase extends GrcBlockBase implements IPipeBlock, ITileEntityProvider, IDroppableBlock, IWrenchable, IColorRemovable
 {
+	public final float[] bounds = new float[6];
+	protected final float unit = 1.0f / 32.0f;
+	protected final float[] unitBounds = new float[] { -unit, -unit, -unit, unit, unit, unit };
 	private PipeType pipeType;
 
 	public BlockPipeBase(PipeType type)
@@ -75,6 +79,16 @@ public class BlockPipeBase extends GrcBlockBase implements IPipeBlock, ITileEnti
 	public void getSubBlocks(Item block, CreativeTabs tab, List list)
 	{
 		list.add(new ItemStack(block, 1, GrcColorPreset.Transparent.ordinal()));
+	}
+
+	@Override
+	public void breakBlock(World world, int x, int y, int z, Block block, int meta)
+	{
+		for (ForgeDirection direction : ForgeDirection.VALID_DIRECTIONS)
+		{
+			world.notifyBlocksOfNeighborChange(x + direction.offsetX, y + direction.offsetY, z + direction.offsetZ, this);
+		}
+		super.breakBlock(world, x, y, z, block, meta);
 	}
 
 	public PipeType getPipeType()
@@ -97,6 +111,7 @@ public class BlockPipeBase extends GrcBlockBase implements IPipeBlock, ITileEnti
 		return null;
 	}
 
+	@Override
 	public void onNeighborBlockChange(World world, int x, int y, int z, Block neighbor)
 	{
 		final TileEntityPipeBase pipeBase = getTileEntity(world, x, y, z);
@@ -202,51 +217,78 @@ public class BlockPipeBase extends GrcBlockBase implements IPipeBlock, ITileEnti
 	}
 
 	@Override
-	@SuppressWarnings({"rawtypes", "unchecked"})
-	public void addCollisionBoxesToList(World world, int x, int y, int z, AxisAlignedBB bb, List list, Entity entity)
+	public void onBlockAdded(World world, int x, int y, int z)
 	{
-		switch (pipeType)
+		final TileEntityPipeBase pipe = getTileEntity(world, x, y, z);
+		if (pipe != null)
 		{
-			case BASE:
-				setBlockBounds(PipeConsts.BASE_CORE_MIN_X, PipeConsts.BASE_CORE_MIN_Y, PipeConsts.BASE_CORE_MIN_Z,
-					PipeConsts.BASE_CORE_MAX_X, PipeConsts.BASE_CORE_MAX_Y, PipeConsts.BASE_CORE_MAX_Z);
-				break;
-			case VACUUM:
-				setBlockBounds(PipeConsts.VACUUM_CORE_MIN_X, PipeConsts.VACUUM_CORE_MIN_Y, PipeConsts.VACUUM_CORE_MIN_Z,
-					PipeConsts.VACUUM_CORE_MAX_X, PipeConsts.VACUUM_CORE_MAX_Y, PipeConsts.VACUUM_CORE_MAX_Z);
-				break;
-			default:
-				setBlockBounds(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+			pipe.refreshCache();
 		}
+	}
 
-		super.addCollisionBoxesToList(world, x, y, z, bb, list, entity);
+	private void expandBoundsToFit(float[] expander)
+	{
+		for (int side = 0; side < 3; ++side)
+		{
+			if (expander[side] < bounds[side]) bounds[side] = expander[side];
+		}
+		for (int side = 3; side < 6; ++side)
+		{
+			if (expander[side] > bounds[side]) bounds[side] = expander[side];
+		}
+	}
+
+	@Override
+	public void setBlockBoundsBasedOnState(IBlockAccess world, int x, int y, int z)
+	{
 		final TileEntityPipeBase te = getTileEntity(world, x, y, z);
 		if (te != null)
 		{
-			for (int i = 0; i < 6; ++i)
-			{
-				if (te.pipeSections[i].usageState != TileEntityPipeBase.UsageState.UNUSABLE)
-				{
-					if (pipeType == PipeType.BASE)
-					{
-						setBlockBounds(PipeConsts.INNER_SIDES[i][0], PipeConsts.INNER_SIDES[i][1], PipeConsts.INNER_SIDES[i][2],
-							PipeConsts.INNER_SIDES[i][3], PipeConsts.INNER_SIDES[i][4], PipeConsts.INNER_SIDES[i][5]);
-						super.addCollisionBoxesToList(world, x, y, z, bb, list, entity);
-					}
-					if (TileEntityPipeBase.EndType.BUS == te.pipeSections[i].endType)
-					{
-						setBlockBounds(PipeConsts.BUS_SIDES[i][0], PipeConsts.BUS_SIDES[i][1], PipeConsts.BUS_SIDES[i][2],
-							PipeConsts.BUS_SIDES[i][3], PipeConsts.BUS_SIDES[i][4], PipeConsts.BUS_SIDES[i][5]);
-					}
-					else
-					{
-						setBlockBounds(PipeConsts.PIPE_SIDES[i][0], PipeConsts.PIPE_SIDES[i][1], PipeConsts.PIPE_SIDES[i][2],
-							PipeConsts.PIPE_SIDES[i][3], PipeConsts.PIPE_SIDES[i][4], PipeConsts.PIPE_SIDES[i][5]);
-					}
-					super.addCollisionBoxesToList(world, x, y, z, bb, list, entity);
-				}
-			}
+			setBlockBounds(te.bounds[0], te.bounds[1], te.bounds[2], te.bounds[3], te.bounds[4], te.bounds[5]);
 		}
-		setBlockBounds(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+		else
+		{
+			bounds[0] = 1f;
+			bounds[1] = 1f;
+			bounds[2] = 1f;
+			bounds[3] = -1f;
+			bounds[4] = -1f;
+			bounds[5] = -1f;
+			switch (pipeType)
+			{
+				case BASE:
+					expandBoundsToFit(PipeConsts.PIPE_BASE_CORE);
+					break;
+				case VACUUM:
+					expandBoundsToFit(PipeConsts.PIPE_VACUUM_CORE);
+					break;
+				default:
+			}
+			setBlockBounds(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]);
+		}
+	}
+
+	@Override
+	public AxisAlignedBB getCollisionBoundingBoxFromPool(World world, int x, int y, int z)
+	{
+		setBlockBoundsBasedOnState(world, x, y, z);
+		return super.getCollisionBoundingBoxFromPool(world, x, y, z);
+	}
+
+	@Override
+	@SideOnly(Side.CLIENT)
+	public AxisAlignedBB getSelectedBoundingBoxFromPool(World world, int x, int y, int z)
+	{
+		setBlockBoundsBasedOnState(world, x, y, z);
+		bounds[0] = (float)minX;
+		bounds[1] = (float)minY;
+		bounds[2] = (float)minZ;
+		bounds[3] = (float)maxX;
+		bounds[4] = (float)maxY;
+		bounds[5] = (float)maxZ;
+		BoundUtils.addBounds(bounds, unitBounds);
+		BoundUtils.clampBounds(bounds);
+		setBlockBounds(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]);
+		return super.getSelectedBoundingBoxFromPool(world, x, y, z);
 	}
 }

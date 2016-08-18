@@ -29,6 +29,7 @@ import growthcraft.api.core.util.GrcColorPreset;
 import growthcraft.core.common.tileentity.event.EventHandler;
 import growthcraft.core.common.tileentity.GrcTileEntityBase;
 import io.polyfox.fluentem.common.block.IPipeBlock;
+import io.polyfox.fluentem.util.PipeConsts;
 import io.polyfox.fluentem.util.PipeFlag;
 import io.polyfox.fluentem.util.PipeType;
 
@@ -125,11 +126,11 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 
 	public PipeSection[] pipeSections = new PipeSection[7];
 	public PipeBuffer[] pipeBuffers = new PipeBuffer[ForgeDirection.VALID_DIRECTIONS.length];
+	public final float[] bounds = new float[6];
 	private GrcColorPreset colour = GrcColorPreset.Transparent;
 	private PipeFluidTank fluidTank = new PipeFluidTank(FluidContainerRegistry.BUCKET_VOLUME / 4);
 	private int pipeRenderState = PipeFlag.PIPE_CORE;
-	private boolean dirty = true;
-	private boolean needsUpdate = true;
+	private int lastPipeRenderState = 0;
 	private boolean neighbourChanged = true;
 	private PipeType pipeType = PipeType.UNKNOWN;
 
@@ -145,16 +146,12 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 		}
 	}
 
-	private void markAsDirty()
-	{
-		this.dirty = true;
-	}
-
 	@Override
 	public void setColour(GrcColorPreset kolour)
 	{
 		this.colour = kolour;
-		markAsDirty();
+		// reset render state to force update
+		this.lastPipeRenderState = 0;
 	}
 
 	@Override
@@ -167,13 +164,6 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 	{
 		this.neighbourChanged = true;
 	}
-
-	//@Override
-	//public void invalidate()
-	//{
-	//	super.invalidate();
-	//	//markAsDirty();
-	//}
 
 	public boolean isVacuumPipe()
 	{
@@ -191,7 +181,7 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 
 	public void refreshCache()
 	{
-		final Block block = worldObj.getBlock(xCoord, yCoord, zCoord);
+		final Block block = getBlockType();
 		if (block instanceof IPipeBlock)
 		{
 			pipeType = ((IPipeBlock)block).getPipeType();
@@ -201,7 +191,6 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 			invalidate();
 			return;
 		}
-		final int oldRenderState = getPipeRenderState();
 		this.pipeRenderState = getPipeCoreState();
 		for (int i = 0; i < pipeBuffers.length; ++i)
 		{
@@ -211,7 +200,7 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 			pipeSections[i].usageState = UsageState.UNUSABLE;
 			pipeSections[i].endType = EndType.NONE;
 			boolean valid = true;
-			// if the other pipe is a ColourableTile
+			// if the other object is a ColourableTile
 			if (te instanceof IColourableTile)
 			{
 				final IColourableTile colouredTile = (IColourableTile)te;
@@ -234,7 +223,6 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 				}
 			}
 		}
-		if (pipeRenderState != oldRenderState) needsUpdate = true;
 	}
 
 	private void transferFluid(IFluidHandler dest, PipeFluidTank src, ForgeDirection dir)
@@ -265,82 +253,69 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 		}
 	}
 
-	@Override
-	public void updateEntity()
+	protected void updatePipeTransfer()
 	{
-		if (!worldObj.isRemote)
-		{
-			if (needsUpdate)
-			{
-				needsUpdate = false;
-				this.worldObj.markBlockForUpdate(this.xCoord, this.yCoord, this.zCoord);
-				System.out.println("Updating block of pipe change: xCoord=" + xCoord + " yCoord=" + yCoord + " zCoord=" + zCoord);
-			}
-			if (neighbourChanged)
-			{
-				neighbourChanged = false;
-				refreshCache();
-			}
-			if (dirty)
-			{
-				dirty = false;
-				worldObj.notifyBlockChange(this.xCoord, this.yCoord, this.zCoord, worldObj.getBlock(this.xCoord, this.yCoord, this.zCoord));
-				System.out.println("Notifying block of pipe change: xCoord=" + xCoord + " yCoord=" + yCoord + " zCoord=" + zCoord);
-			}
-		}
-
 		final PipeSection coreSection = pipeSections[6];
 		coreSection.feedFlag = 0;
-		for (int i = 0; i < pipeBuffers.length; ++i)
+		boolean canTransfer = isVacuumPipe();
+		if (!isVacuumPipe() && fluidTank.getFluidAmount() > 0)
 		{
-			final ForgeDirection dir = ForgeDirection.getOrientation(i);
-			final ForgeDirection oppdir = dir.getOpposite();
-			final PipeSection section = pipeSections[i];
-			if (section.usageState == UsageState.USABLE)
+			canTransfer = true;
+		}
+
+		if (canTransfer)
+		{
+			for (int i = 0; i < pipeBuffers.length; ++i)
 			{
-				final TileEntity te = pipeBuffers[i].te;
-				if (section.transferState == TransferState.OUTPUT)
+				final PipeSection section = pipeSections[i];
+				if (section.usageState == UsageState.USABLE)
 				{
-					if (isVacuumPipe())
+					final ForgeDirection dir = ForgeDirection.getOrientation(i);
+					final ForgeDirection oppdir = dir.getOpposite();
+					final TileEntity te = pipeBuffers[i].te;
+					if (section.transferState == TransferState.OUTPUT)
 					{
-						if (te instanceof IPipeTile)
+						if (isVacuumPipe())
 						{
-							if (fluidTank.getFluidAmount() > 0)
+							if (te instanceof IPipeTile)
 							{
-								final IFluidHandler fluidHandler = (IFluidHandler)te;
-								transferFluid(fluidHandler, fluidTank, oppdir);
+								if (fluidTank.getFluidAmount() > 0)
+								{
+									final IFluidHandler fluidHandler = (IFluidHandler)te;
+									transferFluid(fluidHandler, fluidTank, oppdir);
+								}
 							}
 						}
+						else
+						{
+							if (te instanceof IFluidHandler)
+							{
+								if (fluidTank.getFluidAmount() > 0)
+								{
+									final IFluidHandler fluidHandler = (IFluidHandler)te;
+									transferFluid(fluidHandler, fluidTank, oppdir);
+								}
+							}
+						}
+						section.transferState = TransferState.IDLE;
 					}
 					else
 					{
-						if (te instanceof IFluidHandler)
+						if (section.transferState == TransferState.INPUT)
 						{
-							if (fluidTank.getFluidAmount() > 0)
+							coreSection.feedFlag |= 1 << i;
+							section.transferState = TransferState.IDLE;
+						}
+						if (isVacuumPipe())
+						{
+							if (te instanceof IFluidHandler && !(te instanceof IPipeTile))
 							{
 								final IFluidHandler fluidHandler = (IFluidHandler)te;
-								transferFluid(fluidHandler, fluidTank, oppdir);
-							}
-						}
-					}
-					section.transferState = TransferState.IDLE;
-				}
-				else
-				{
-					if (section.transferState == TransferState.INPUT)
-					{
-						coreSection.feedFlag = 1 << i;
-						section.transferState = TransferState.IDLE;
-					}
-					if (isVacuumPipe())
-					{
-						if (te instanceof IFluidHandler && !(te instanceof IPipeTile))
-						{
-							final IFluidHandler fluidHandler = (IFluidHandler)te;
-							if (!fluidTank.isFull())
-							{
-								transferFluid(fluidTank, fluidHandler, oppdir);
-								section.transferState = TransferState.INPUT;
+								if (!fluidTank.isFull())
+								{
+									transferFluid(fluidTank, fluidHandler, oppdir);
+									section.transferState = TransferState.INPUT;
+								}
 							}
 						}
 					}
@@ -373,6 +348,76 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 				}
 			}
 		}
+	}
+
+	private void expandBoundsToFit(float[] expander)
+	{
+		for (int side = 0; side < 3; ++side)
+		{
+			if (expander[side] < bounds[side]) bounds[side] = expander[side];
+		}
+		for (int side = 3; side < 6; ++side)
+		{
+			if (expander[side] > bounds[side]) bounds[side] = expander[side];
+		}
+	}
+
+	protected void refreshBlockBounds()
+	{
+		bounds[0] = 1f;
+		bounds[1] = 1f;
+		bounds[2] = 1f;
+		bounds[3] = -1f;
+		bounds[4] = -1f;
+		bounds[5] = -1f;
+		switch (pipeType)
+		{
+			case BASE:
+				expandBoundsToFit(PipeConsts.PIPE_BASE_CORE);
+				break;
+			case VACUUM:
+				expandBoundsToFit(PipeConsts.PIPE_VACUUM_CORE);
+				break;
+			default:
+		}
+
+		for (int i = 0; i < 6; ++i)
+		{
+			if (pipeSections[i].usageState != UsageState.UNUSABLE)
+			{
+				if (pipeType == PipeType.BASE)
+				{
+					expandBoundsToFit(PipeConsts.INNER_SIDES[i]);
+				}
+				if (EndType.BUS == pipeSections[i].endType)
+				{
+					expandBoundsToFit(PipeConsts.BUS_SIDES[i]);
+				}
+				else
+				{
+					expandBoundsToFit(PipeConsts.PIPE_SIDES[i]);
+				}
+			}
+		}
+	}
+
+	@Override
+	public void updateEntity()
+	{
+		if (neighbourChanged)
+		{
+			neighbourChanged = false;
+			refreshCache();
+		}
+		if (pipeRenderState != lastPipeRenderState)
+		{
+			this.lastPipeRenderState = pipeRenderState;
+			refreshBlockBounds();
+			worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
+			worldObj.notifyBlockChange(xCoord, yCoord, zCoord, getBlockType());
+		}
+
+		if (!worldObj.isRemote) updatePipeTransfer();
 	}
 
 	@Override
@@ -477,9 +522,10 @@ public class TileEntityPipeBase extends GrcTileEntityBase implements IFluidHandl
 	}
 
 	@EventHandler(type=EventHandler.EventType.NETWORK_WRITE)
-	public void writeToStream_PipeState(ByteBuf stream) throws IOException
+	public boolean writeToStream_PipeState(ByteBuf stream) throws IOException
 	{
 		stream.writeInt(colour.ordinal());
 		stream.writeInt(getPipeRenderState());
+		return true;
 	}
 }
