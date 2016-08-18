@@ -1,4 +1,5 @@
-tile.grc.pipeBase.name=Fluid Tube
-tile.grc.pipeVacuum.name=Vacuum Tube
+tile.fluentum.pipe_base.name=Fluid Tube
+tile.fluentum.pipe_vacuum.name=Vacuum Tube
+tile.fluentum.pipe_valve.name=Valve Tube
 
-item.grcpipes.pipe_base.format.name=%s (%s)
+item.fluentum.pipe_base.format.name=%s (%s)
